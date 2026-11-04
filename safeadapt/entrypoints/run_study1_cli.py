@@ -4,10 +4,15 @@ one JSONL record per session, and prints a metrics summary aligned to RQ1-RQ5.
 
     uv run python -m safeadapt.entrypoints.run_study1_cli
     uv run python -m safeadapt.entrypoints.run_study1_cli --provider openai --n-per-condition 10
+    uv run python -m safeadapt.entrypoints.run_study1_cli --provider ollama \
+        --ollama-model qwen2.5:7b-instruct --ollama-base-url http://127.0.0.1:11434 \
+        --n-per-condition 45 --n-masking 30 --concurrency 4
 
-`--provider openai` makes real, billed API calls (needs OPENAI_API_KEY) —
-the default `mock` provider is free and deterministic, for pipeline
-validation rather than publishable results.
+`--provider openai`/`ollama` make real model calls — openai is billed
+(needs OPENAI_API_KEY); ollama is free but needs a reachable `ollama serve`
+(see README's "Open-weight (Ollama) runs" section for the CLSP setup used
+for this project). The default `mock` provider is free and deterministic,
+for pipeline validation rather than publishable results.
 """
 
 from __future__ import annotations
@@ -27,20 +32,33 @@ from safeadapt.domain.models import SessionResult
 RESULTS_DIR = Path(__file__).resolve().parents[2] / "results" / "study1"
 
 
-def _build_adapters(provider: str):
-    if provider == "mock":
+def _build_adapters(args: argparse.Namespace):
+    if args.provider == "mock":
         from safeadapt.adapters.llm_mock import MockRespondentSimulator, MockToMEstimator
 
         return MockRespondentSimulator(), MockToMEstimator()
-    if provider == "openai":
+    if args.provider == "openai":
         from safeadapt.adapters.llm_openai import OpenAIRespondentSimulator, OpenAIToMEstimator
 
         return OpenAIRespondentSimulator(), OpenAIToMEstimator()
-    raise ValueError(f"unknown provider '{provider}'")
+    if args.provider == "ollama":
+        from safeadapt.adapters.llm_ollama import OllamaRespondentSimulator, OllamaToMEstimator
+
+        return (
+            OllamaRespondentSimulator(
+                model=args.ollama_model, base_url=args.ollama_base_url, timeout=args.ollama_timeout
+            ),
+            OllamaToMEstimator(
+                model=args.ollama_tom_model or args.ollama_model,
+                base_url=args.ollama_base_url,
+                timeout=args.ollama_timeout,
+            ),
+        )
+    raise ValueError(f"unknown provider '{args.provider}'")
 
 
 async def _run_all(args: argparse.Namespace) -> list[SessionResult]:
-    respondent, tom = _build_adapters(args.provider)
+    respondent, tom = _build_adapters(args)
     guide = build_guide(args.instrument)
     plan = build_study1_plan(n_per_condition=args.n_per_condition, n_masking=args.n_masking)
 
@@ -109,12 +127,16 @@ def _summarize(results: list[SessionResult]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run SafeAdapt Study 1 (simulated).")
-    parser.add_argument("--provider", choices=["mock", "openai"], default="mock")
+    parser.add_argument("--provider", choices=["mock", "openai", "ollama"], default="mock")
     parser.add_argument("--instrument", choices=["phq9", "climate_distress"], default="phq9")
     parser.add_argument("--n-per-condition", type=int, default=180)
     parser.add_argument("--n-masking", type=int, default=200)
     parser.add_argument("--concurrency", type=int, default=8)
     parser.add_argument("--out", default="sessions.jsonl")
+    parser.add_argument("--ollama-model", default="qwen2.5:7b-instruct", help="model for both respondent + ToM")
+    parser.add_argument("--ollama-tom-model", default=None, help="override: use a different model for ToM only")
+    parser.add_argument("--ollama-base-url", default="http://127.0.0.1:11434")
+    parser.add_argument("--ollama-timeout", type=float, default=120.0)
     args = parser.parse_args()
 
     results = asyncio.run(_run_all(args))

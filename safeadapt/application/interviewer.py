@@ -11,7 +11,7 @@ scoring, gated by the persona-aware safety policy for the active ablation arm.
 from __future__ import annotations
 
 from safeadapt.application.topic_guide import GuideEntry
-from safeadapt.domain import safety_policy, utility
+from safeadapt.domain import coverage, safety_policy, utility
 from safeadapt.domain.models import (
     AblationArm,
     DistressProfile,
@@ -97,7 +97,7 @@ class SafeAdaptInterviewer:
             ]
             scored = utility.score_candidates(
                 entry.adaptive_candidates,
-                coverage=[1.0] * len(entry.adaptive_candidates),
+                coverage=coverage.coverage_scores(entry.adaptive_candidates, history),
                 emergence=[0.5] * len(entry.adaptive_candidates),
                 projected_affect=projected,
                 tau_p=safety_policy.threshold_for(persona, self._thresholds),
@@ -115,7 +115,7 @@ class SafeAdaptInterviewer:
             # Reactive or no-constraint ablation: pick by utility alone, fire after the fact.
             scored = utility.score_candidates(
                 entry.adaptive_candidates,
-                coverage=[1.0] * len(entry.adaptive_candidates),
+                coverage=coverage.coverage_scores(entry.adaptive_candidates, history),
                 emergence=[0.5] * len(entry.adaptive_candidates),
                 projected_affect=[0.0] * len(entry.adaptive_candidates),
                 tau_p=1.0,

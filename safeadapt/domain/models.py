@@ -13,6 +13,10 @@ from typing import Literal
 Severity = Literal["low", "moderate", "high"]
 SafetyTier = Literal["none", "anticipatory", "reactive"]
 ProbeKind = Literal["fixed_core", "adaptive_probe", "grounding"]
+# Individual/collective/systemic mechanism levels an adaptive probe can target —
+# Sabherwal, Goldwert, Vlasceanu & Weber (2025): coordinated coverage across
+# levels outperforms both single-mechanism depth and "kitchen sink" breadth.
+ProbeLevel = Literal["individual", "collective", "systemic"]
 
 
 class Persona(str, Enum):
@@ -52,6 +56,7 @@ class Probe:
     text: str
     kind: ProbeKind
     distress_sensitivity: Severity = "low"
+    level: ProbeLevel | None = None  # only set for kind == "adaptive_probe"
 
 
 @dataclass(frozen=True)
